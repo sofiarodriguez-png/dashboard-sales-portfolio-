@@ -1,0 +1,46 @@
+name: Actualizar Dashboard Diariamente
+
+on:
+  schedule:
+    # Ejecutar todos los días a las 8:00 AM UTC (5:00 AM Argentina)
+    - cron: '0 8 * * *'
+  workflow_dispatch: # Permite ejecutar manualmente
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout código
+      uses: actions/checkout@v3
+
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Instalar dependencias
+      run: |
+        pip install google-cloud-bigquery pandas
+
+    - name: Autenticar con Google Cloud
+      env:
+        GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      run: |
+        echo "$GCP_SA_KEY" > /tmp/gcp-key.json
+        export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json
+
+    - name: Generar dashboard actualizado
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-key.json
+      run: |
+        python generate_dashboard.py
+        mv dashboard_*.html index.html
+
+    - name: Commit y push cambios
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add index.html
+        git diff --quiet && git diff --staged --quiet || git commit -m "Dashboard actualizado $(date +'%Y-%m-%d')"
+        git push
