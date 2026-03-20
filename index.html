@@ -250,6 +250,15 @@
         .positivo { color: #27ae60; font-weight: bold; }
         .negativo { color: #e74c3c; font-weight: bold; }
         .null-value { color: #999; font-style: italic; }
+    
+        th:hover {
+            background: linear-gradient(135deg, #5568d3 0%, #643989 100%);
+        }
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:after { content: ' ⇅'; opacity: 0.5; }
+        th.sort-asc:after { content: ' ▲'; opacity: 1; }
+        th.sort-desc:after { content: ' ▼'; opacity: 1; }
+
     </style>
 </head>
 <body>
@@ -36824,6 +36833,42 @@
 
         aplicarFiltrosDiario();
         aplicarFiltrosMensual();
+
+        // Sorting de tablas
+        function setupTableSorting(tableId) {
+            const table = document.getElementById(tableId);
+            if (!table) return;
+            const headers = table.querySelectorAll('thead th');
+            headers.forEach((header, index) => {
+                header.classList.add('sortable');
+                header.addEventListener('click', () => sortTable(tableId, index));
+            });
+        }
+
+        function sortTable(tableId, columnIndex) {
+            const table = document.getElementById(tableId);
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const header = table.querySelectorAll('thead th')[columnIndex];
+            const isAsc = header.classList.contains('sort-asc');
+            table.querySelectorAll('thead th').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+            header.classList.add(isAsc ? 'sort-desc' : 'sort-asc');
+            rows.sort((a, b) => {
+                let aVal = a.children[columnIndex].textContent.trim();
+                let bVal = b.children[columnIndex].textContent.trim();
+                const aNum = parseFloat(aVal.replace(/,/g, '').replace(/[+\-]/g, ''));
+                const bNum = parseFloat(bVal.replace(/,/g, '').replace(/[+\-]/g, ''));
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return isAsc ? bNum - aNum : aNum - bNum;
+                }
+                return isAsc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+            });
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        setupTableSorting('tabla-diaria');
+        setupTableSorting('tabla-mensual');
+
     </script>
 </body>
 </html>
