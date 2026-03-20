@@ -1,16 +1,13 @@
 """
-Dashboard V25 - Con Tarjetas, Top Agencias y Alertas
-Mejoras:
-- Tarjetas resumen con totales por país y producto
-- Top Agencias por País y Producto
-- Alertas de variación diaria (más/menos usuarios vs ayer)
+Dashboard V24 - Para GitHub Actions
+Se ejecuta automáticamente todos los días
 """
 from google.cloud import bigquery
 import pandas as pd
 from datetime import datetime, timedelta
 import os
 
-# Conectar a BigQuery
+# Conectar a BigQuery usando credenciales de GitHub Actions
 cliente = bigquery.Client(project='meli-bi-data')
 
 print("[INFO] Consultando datos DIARIOS (LOG)...")
@@ -93,36 +90,10 @@ df_mensual['producto'] = df_mensual['criterio'].apply(clasificar_producto)
 df_mensual = df_mensual.sort_values(['pais', 'agencia', 'criterio', 'lista', 'periodo'])
 df_mensual['var_mes_anterior'] = df_mensual.groupby(['pais', 'agencia', 'criterio', 'lista'])['asignacion'].diff()
 
-print("[INFO] Calculando métricas y alertas...")
+print("[INFO] Generando HTML...")
 
-# Convertir fecha a datetime
 if not pd.api.types.is_datetime64_any_dtype(df_diario['fecha']):
     df_diario['fecha'] = pd.to_datetime(df_diario['fecha'])
-
-# ===== CALCULAR TOTALES Y ALERTAS =====
-fecha_mas_reciente = df_diario['fecha'].max()
-fecha_dia_anterior = fecha_mas_reciente - timedelta(days=1)
-
-# Totales del día más reciente por país y producto
-totales_hoy = df_diario[df_diario['fecha'] == fecha_mas_reciente].groupby(['pais', 'producto'])['asignacion'].sum().reset_index()
-totales_hoy.columns = ['pais', 'producto', 'total_hoy']
-
-# Totales del día anterior
-totales_ayer = df_diario[df_diario['fecha'] == fecha_dia_anterior].groupby(['pais', 'producto'])['asignacion'].sum().reset_index()
-totales_ayer.columns = ['pais', 'producto', 'total_ayer']
-
-# Merge para calcular variaciones
-alertas = pd.merge(totales_hoy, totales_ayer, on=['pais', 'producto'], how='left')
-alertas['variacion'] = alertas['total_hoy'] - alertas['total_ayer'].fillna(0)
-alertas['variacion_pct'] = (alertas['variacion'] / alertas['total_ayer'].fillna(1)) * 100
-alertas = alertas.sort_values('variacion', ascending=False)
-
-# Top Agencias por País y Producto (mes actual)
-df_mensual_actual = df_mensual[df_mensual['periodo'] == periodo_actual]
-top_agencias = df_mensual_actual.groupby(['pais', 'producto', 'agencia'])['asignacion'].sum().reset_index()
-top_agencias = top_agencias.sort_values(['pais', 'producto', 'asignacion'], ascending=[True, True, False])
-
-print("[INFO] Generando HTML...")
 
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
@@ -133,7 +104,7 @@ agencias_unicas = sorted([a for a in df_diario['agencia'].unique() if pd.notna(a
 criterios_unicos = sorted([c for c in df_diario['criterio'].unique() if pd.notna(c)])
 productos_unicos = sorted(df_diario['producto'].unique())
 
-# ===== GENERAR HTML =====
+# HTML
 html = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -168,6 +139,16 @@ html = f"""<!DOCTYPE html>
             margin-bottom: 30px;
             font-size: 1.1em;
         }}
+        .alert {{
+            background: #d4edda;
+            border: 2px solid #28a745;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #155724;
+            font-weight: bold;
+        }}
         .update-info {{
             background: #fff3cd;
             border: 2px solid #ffc107;
@@ -177,84 +158,6 @@ html = f"""<!DOCTYPE html>
             text-align: center;
             color: #856404;
         }}
-
-        /* TARJETAS DE TOTALES */
-        .cards-container {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }}
-        .card {{
-            background: white;
-            border-radius: 15px;
-            padding: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            border-left: 5px solid #667eea;
-        }}
-        .card.consumer {{ border-left-color: #27ae60; }}
-        .card.merchant {{ border-left-color: #e67e22; }}
-        .card.mixtos {{ border-left-color: #9b59b6; }}
-        .card-pais {{
-            font-size: 0.9em;
-            color: #666;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }}
-        .card-producto {{
-            font-size: 1.1em;
-            color: #333;
-            margin-bottom: 10px;
-        }}
-        .card-total {{
-            font-size: 2em;
-            font-weight: bold;
-            color: #667eea;
-            margin-bottom: 10px;
-        }}
-        .card-variacion {{
-            font-size: 0.9em;
-            padding: 5px 10px;
-            border-radius: 5px;
-            display: inline-block;
-        }}
-        .card-variacion.positiva {{
-            background: #d4edda;
-            color: #155724;
-        }}
-        .card-variacion.negativa {{
-            background: #f8d7da;
-            color: #721c24;
-        }}
-
-        /* ALERTAS */
-        .alertas-section {{
-            background: #fff3cd;
-            border-left: 5px solid #ffc107;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 30px;
-        }}
-        .alertas-section h3 {{
-            color: #856404;
-            margin-bottom: 15px;
-        }}
-        .alerta-item {{
-            background: white;
-            padding: 10px 15px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }}
-        .alerta-item.critica {{
-            border-left: 4px solid #e74c3c;
-        }}
-        .alerta-item.mejora {{
-            border-left: 4px solid #27ae60;
-        }}
-
         .section {{
             margin: 30px 0;
             background: #f8f9fa;
@@ -269,42 +172,6 @@ html = f"""<!DOCTYPE html>
             border-bottom: 3px solid #667eea;
             padding-bottom: 10px;
         }}
-
-        /* TOP AGENCIAS */
-        .top-agencias-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }}
-        .top-agencia-card {{
-            background: white;
-            border-radius: 10px;
-            padding: 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }}
-        .top-agencia-card h4 {{
-            color: #667eea;
-            margin-bottom: 10px;
-            font-size: 1.1em;
-        }}
-        .agencia-item {{
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #e0e0e0;
-        }}
-        .agencia-item:last-child {{
-            border-bottom: none;
-        }}
-        .agencia-nombre {{
-            font-weight: 500;
-        }}
-        .agencia-valor {{
-            color: #667eea;
-            font-weight: bold;
-        }}
-
         .filters {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -394,83 +261,11 @@ html = f"""<!DOCTYPE html>
         <p class="subtitle">Mercado Libre - Actualización Automática Diaria</p>
 
         <div class="update-info">
-            🔄 Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Datos más recientes: {fecha_mas_reciente.strftime('%Y-%m-%d')}
+            🔄 Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Se actualiza automáticamente todos los días a las 8:00 AM
         </div>
 
-        <!-- ALERTAS DE VARIACIÓN DIARIA -->
-        <div class="alertas-section">
-            <h3>⚠️ Alertas - Variación vs Día Anterior</h3>
-"""
-
-# Generar alertas
-for _, alerta in alertas.iterrows():
-    clase_alerta = 'critica' if alerta['variacion'] < 0 else 'mejora'
-    signo = '+' if alerta['variacion'] > 0 else ''
-    html += f"""
-            <div class="alerta-item {clase_alerta}">
-                <div>
-                    <strong>{alerta['pais']} - {alerta['producto'].upper()}</strong>
-                    <span style="margin-left: 15px; color: #666;">Hoy: {int(alerta['total_hoy']):,} | Ayer: {int(alerta['total_ayer']):,}</span>
-                </div>
-                <div style="font-weight: bold; font-size: 1.1em;">
-                    {signo}{int(alerta['variacion']):,} ({signo}{alerta['variacion_pct']:.1f}%)
-                </div>
-            </div>
-"""
-
-html += """        </div>
-
-        <!-- TARJETAS DE TOTALES -->
-        <div class="cards-container">
-"""
-
-# Generar tarjetas
-for _, row in totales_hoy.iterrows():
-    variacion = alertas[(alertas['pais'] == row['pais']) & (alertas['producto'] == row['producto'])]['variacion'].values
-    variacion_val = variacion[0] if len(variacion) > 0 else 0
-    var_clase = 'positiva' if variacion_val > 0 else 'negativa'
-    signo = '+' if variacion_val > 0 else ''
-
-    html += f"""
-            <div class="card {row['producto']}">
-                <div class="card-pais">{row['pais']}</div>
-                <div class="card-producto">{row['producto'].upper()}</div>
-                <div class="card-total">{int(row['total_hoy']):,}</div>
-                <div class="card-variacion {var_clase}">
-                    {signo}{int(variacion_val):,} vs ayer
-                </div>
-            </div>
-"""
-
-html += """        </div>
-
-        <!-- TOP AGENCIAS POR PAÍS Y PRODUCTO -->
-        <div class="section">
-            <h2>🏆 Top Agencias por País y Producto (Mes Actual: {periodo_str})</h2>
-            <div class="top-agencias-grid">
-""".replace('{periodo_str}', str(periodo_actual))
-
-# Generar top agencias por cada combinación país-producto
-for pais in ['MLA', 'MLM', 'MLB']:
-    for producto in ['consumer', 'merchant']:
-        top_data = top_agencias[(top_agencias['pais'] == pais) & (top_agencias['producto'] == producto)].head(5)
-        if len(top_data) > 0:
-            html += f"""
-                <div class="top-agencia-card">
-                    <h4>{pais} - {producto.upper()}</h4>
-"""
-            for _, ag in top_data.iterrows():
-                html += f"""
-                    <div class="agencia-item">
-                        <span class="agencia-nombre">{ag['agencia']}</span>
-                        <span class="agencia-valor">{int(ag['asignacion']):,}</span>
-                    </div>
-"""
-            html += """
-                </div>
-"""
-
-html += """            </div>
+        <div class="alert">
+            ✓ Filtro de Producto (Consumer/Merchant/Mixtos/Otro) | Todos los criterios incluidos
         </div>
 
         <!-- VISTA DIARIA -->
@@ -796,10 +591,6 @@ archivo_salida = f"dashboard_{timestamp}.html"
 with open(archivo_salida, 'w', encoding='utf-8') as f:
     f.write(html)
 
-print(f"\n[OK] Dashboard V25 creado: {archivo_salida}")
-print(f"\n✨ NUEVAS FUNCIONALIDADES:")
-print(f"  + Tarjetas de totales por país y producto")
-print(f"  + Alertas de variación diaria (vs ayer)")
-print(f"  + Top 5 agencias por país y producto")
-print(f"\n[INFO] Registros diarios: {len(df_diario)}")
+print(f"\n[OK] Dashboard creado: {archivo_salida}")
+print(f"[INFO] Registros diarios: {len(df_diario)}")
 print(f"[INFO] Registros mensuales: {len(df_mensual)}")
