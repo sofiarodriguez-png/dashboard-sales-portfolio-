@@ -15,9 +15,16 @@ cliente = bigquery.Client(project='meli-bi-data')
 
 print("[INFO] Consultando datos DIARIOS (LOG)...")
 
-# Calcular fechas dinámicamente (últimos 30 días)
-fecha_fin = datetime.now().strftime('%Y-%m-%d')
-fecha_inicio = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+# Usar la fecha máxima disponible en BigQuery (no la fecha de ejecución)
+  query_fecha_max = """
+  SELECT MAX(COL_PHOTO_DT) as max_fecha
+  FROM `meli-bi-data.WHOWNER.BT_COL_SALES_PORTFOLIO_LOG`
+  WHERE SIT_SITE_ID IN ('MLA', 'MLM', 'MLB')
+  """
+  max_fecha_result = cliente.query(query_fecha_max).to_dataframe()
+  fecha_fin = max_fecha_result['max_fecha'].iloc[0].strftime('%Y-%m-%d')
+  fecha_inicio = (max_fecha_result['max_fecha'].iloc[0] - timedelta(days=30)).strftime('%Y-%m-%d')
+
 
 # ====== QUERY 1: DATOS DIARIOS ======
 query_diario = f"""
